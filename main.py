@@ -21,13 +21,19 @@ for i in range(1, 3):
         background, (13, 161, 146), (0, 200 * i), (WIDTH, 200 * i), LINE_HEIGHT
     )
 
-while True:
-    screen.blit(background, (0, 0))
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
+def run():
+    while True:
+        screen.blit(background, (0, 0))
 
-    pygame.display.update()
-    clock.tick(60)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+        pygame.display.update()
+        clock.tick(60)
+
+
+if __name__ == "__main__":
+    run()
