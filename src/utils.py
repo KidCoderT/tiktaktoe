@@ -15,5 +15,5 @@ class PlayingAfterGameOverError(Exception):
 
     def __init__(self):
         super().__init__(
-            f"The game is over you cant do anything now until you reset the board!"
+            "The game is over you cant do anything now until you reset the board!"
         )

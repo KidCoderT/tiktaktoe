@@ -1,9 +1,8 @@
 import unittest
-from random import choice, randint
+from random import randint
 
-from src.board import Board
 from src.ai import evaluate_board, get_best_move
-from src.utils import InvalidPositionError
+from src.board import Board
 
 
 class AiTestSuite(unittest.TestCase):
