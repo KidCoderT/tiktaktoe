@@ -1,17 +1,23 @@
+"""This module contains the board class containing the logic and commands
+to use the board
+"""
+
 from enum import Enum
-from src.utils import InvalidPositionError
+from src.utils import *
 
 
 class Board:
     """This is the game board for tic tak toe"""
 
     class GAME_STATE(Enum):
+        """The Game State of the Board"""
+
         PLAYING = 1
         GAME_OVER = 0
 
     def __init__(self):
-        self.__board = [["" for _ in range(3)] for _ in range(3)]
-        self.__last_move = []
+        self.__board = [[" " for _ in range(3)] for _ in range(3)]
+        self.__played_move = []
         self.turn = "x"
 
         self.state = self.GAME_STATE.PLAYING
@@ -30,10 +36,10 @@ class Board:
         Returns:
             _type_: object which contains the position info
         """
-        if 0 <= file < 3 and 0 <= rank < 3:
+        try:
             return self.__board[file][rank]
-
-        raise InvalidPositionError((file, rank))
+        except IndexError as error:
+            raise InvalidPositionError((file, rank)) from error
 
     def play(self, file: int, rank: int):
         """Plays a move on the board
@@ -42,20 +48,27 @@ class Board:
         Args:
             file (int): the file to play the move on
             rank (int): the rank to play the move on
-        """
-        self.__board[file][rank] = self.turn
-        self.__last_move.append((file, rank))
-        self.check_state()
 
-        self.turn = "o" if self.turn == "x" else "x"
+        Raises:
+            InvalidPositionError: It is raised when the position is invalid
+        """
+        if self.state == self.GAME_STATE.GAME_OVER:
+            raise PlayingAfterGameOverError()
+        try:
+            self.__board[file][rank] = self.turn
+            self.__played_move.append((file, rank))
+            self.check_state()
+            self.turn = "o" if self.turn == "x" else "x"
+        except IndexError as error:
+            raise InvalidPositionError((file, rank)) from error
 
     def undo(self):
         """Undos the last played move and resets the current_player"""
-        if len(self.__last_move) == 0:
+        if len(self.__played_move) == 0:
             raise Exception("you cant undo at the beginning of the game")
 
-        last_move = self.__last_move.pop(-1)
-        self.__board[last_move[0]][last_move[1]] = ""
+        last_move = self.__played_move.pop(-1)
+        self.__board[last_move[0]][last_move[1]] = " "
 
         self.state = self.GAME_STATE.PLAYING
         self.winner = None
@@ -66,7 +79,9 @@ class Board:
     @property
     def last_move(self):
         """gets the last move of the board"""
-        return self.__last_move[-1]
+        if len(self.__played_move) == 0:
+            return None
+        return self.__played_move[-1]
 
     def available_positions(self) -> list:
         """Returns a list of all available_positions on the board"""
@@ -74,7 +89,7 @@ class Board:
 
         for file in range(3):
             for rank in range(3):
-                if self.get_position(file, rank) == "":
+                if self.get_position(file, rank) == " ":
                     _available_positions.append((file, rank))
 
         return _available_positions
@@ -127,3 +142,19 @@ class Board:
 
         if len(self.available_positions()) == 0:
             self.state = self.GAME_STATE.GAME_OVER
+
+    def reset_board(self):
+        """Resets the board to its initial state"""
+        self.__board = [[" " for _ in range(3)] for _ in range(3)]
+        self.__played_move = []
+        self.turn = "x"
+
+        self.state = self.GAME_STATE.PLAYING
+        self.winner = None
+
+    def get_board(self, update):
+        """Gets the board represented in the form of an array where each element
+        shows a row on the board
+        """
+
+        return ["|".join(update(row)) for row in self.__board]
