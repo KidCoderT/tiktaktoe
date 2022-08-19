@@ -36,12 +36,12 @@ convert_to_emoji = lambda text: emoji[text]
 games = {}
 
 
-def regex_position(argument):
+def regex_position(argument: str):
     try:
         position = re.search(r"[123]+,+?\s+[123]", argument).string
         position.replace(" ", "")
         return tuple(map(int, position.split(",")))
-    except:
+    except AttributeError:
         return None
 
 
@@ -69,7 +69,7 @@ async def make_computer_play(ctx: commands.Context, board: Board):
     await ctx.send(render_board(board))
 
 
-async def end_game(ctx: commands.Context, winner: str, user_id: str):
+async def end_game(ctx: commands.Context, winner: str, user_id: str) -> bool:
     def check(msg):
         return msg.author == ctx.author and msg.channel == ctx.channel
 
@@ -106,11 +106,14 @@ async def end_game(ctx: commands.Context, winner: str, user_id: str):
         if games[user_id]["computer"] == "x":
             await make_computer_play(ctx, games[user_id]["board"])
 
+        return False
+
     elif msg.content.lower() in ("no", "n", "false", "f", "0", "disable", "off"):
         await ctx.send("Thx for playing!")
         await ctx.send("Bye!")
 
         games.pop(user_id)
+        return True
 
 
 @bot.command()
@@ -119,11 +122,7 @@ async def tiktaktoe(ctx: commands.Context, player_value: Optional[str]):
         return len(text) == 1
 
     def check(msg):
-        return (
-            msg.author == ctx.author
-            and msg.channel == ctx.channel
-            and msg.content.lower() in ["x", "o"]
-        )
+        return msg.author == ctx.author and msg.channel == ctx.channel
 
     if ctx.author.id in games.keys():
         return await ctx.reply(
@@ -145,6 +144,10 @@ async def tiktaktoe(ctx: commands.Context, player_value: Optional[str]):
             await ctx.send("Are you X or O?")
             msg = await bot.wait_for("message", check=check)
 
+            if msg.content.lower() not in ["x", "o"]:
+                await ctx.send("Please select either x or o!")
+                continue
+
             if msg.content.lower() == "x":
                 game_data["computer"] = "o"
             elif msg.content.lower() == "o":
@@ -158,47 +161,37 @@ async def tiktaktoe(ctx: commands.Context, player_value: Optional[str]):
     await ctx.send("Your Turn!")
     games[ctx.author.id] = game_data
 
+    while game_data["board"].state == Board.GAME_STATE.PLAYING:
+        msg = await bot.wait_for("message", check=check)
+        position = regex_position(msg.content)
 
-@bot.command()
-async def play(ctx: commands.Context, *, position: regex_position):  # type: ignore
-    if ctx.author.id not in games.keys():
-        return await ctx.send(
-            "You cant play a move without starting a game.\n Write **#help** to know how to use this bot"
-        )
+        if position is not None:
+            try:
+                games[ctx.author.id]["board"].play(position[0] - 1, position[1] - 1)
+            except PositionAlreadyPlayedOnError:
+                await ctx.send(
+                    "Select another location as that position has already been played on!"
+                )
+            else:
+                await ctx.send(f"You played {position[0]}, {position[1]}!")
 
-    elif position is None:
-        return await ctx.send(
-            "Send a valid position like **#play 1, 2**\n the x and y coordinate range from 1 to 3"
-        )
+                await ctx.send(render_board(games[ctx.author.id]["board"]))
 
-    last_move_piece = games[ctx.author.id]["board"].get_position(
-        *games[ctx.author.id]["board"].last_move
-    )
-    if last_move_piece != games[ctx.author.id]["computer"]:
-        return await ctx.send("The computer is thinking Patience!")
+                is_gameover, winner = check_gameover_and_winner(games[ctx.author.id])
 
-    try:
-        games[ctx.author.id]["board"].play(position[0] - 1, position[1] - 1)
-    except PositionAlreadyPlayedOnError as _:
-        return await ctx.send(
-            "Select another location as that position has already been played on!"
-        )
-    else:
-        await ctx.send(f"You played {position[0]}, {position[1]}!")
+                if is_gameover:
+                    should_end = await end_game(ctx, winner, ctx.author.id)
+                    if should_end:
+                        return
 
-        await ctx.send(render_board(games[ctx.author.id]["board"]))
+                await make_computer_play(ctx, games[ctx.author.id]["board"])
 
-        is_gameover, winner = check_gameover_and_winner(games[ctx.author.id])
+                is_gameover, winner = check_gameover_and_winner(games[ctx.author.id])
 
-        if is_gameover:
-            return await end_game(ctx, winner, ctx.author.id)
-
-        await make_computer_play(ctx, games[ctx.author.id]["board"])
-
-        is_gameover, winner = check_gameover_and_winner(games[ctx.author.id])
-
-        if is_gameover:
-            return await end_game(ctx, winner, ctx.author.id)
+                if is_gameover:
+                    should_end = await end_game(ctx, winner, ctx.author.id)
+                    if should_end:
+                        return
 
 
 @bot.command(name="quit")
