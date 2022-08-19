@@ -17,3 +17,11 @@ class PlayingAfterGameOverError(Exception):
         super().__init__(
             "The game is over you cant do anything now until you reset the board!"
         )
+
+
+class PositionAlreadyPlayedOnError(IndexError):
+    """Custom Exception for accessing position already played from the code.
+    This extends from index error"""
+
+    def __init__(self, position: tuple):
+        super().__init__(f"position {position} is already filled")

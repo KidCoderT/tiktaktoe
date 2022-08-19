@@ -37,7 +37,7 @@ class Board:
             _type_: object which contains the position info
         """
         try:
-            return self.__board[file][rank]
+            return self.__board[rank][file]
         except IndexError as error:
             raise InvalidPositionError((file, rank)) from error
 
@@ -54,8 +54,11 @@ class Board:
         """
         if self.state == self.GAME_STATE.GAME_OVER:
             raise PlayingAfterGameOverError()
+
+        if self.__board[rank][file] != " ":
+            raise PositionAlreadyPlayedOnError((file, rank))
         try:
-            self.__board[file][rank] = self.turn
+            self.__board[rank][file] = self.turn
             self.__played_move.append((file, rank))
             self.check_state()
             self.turn = "o" if self.turn == "x" else "x"
@@ -68,7 +71,7 @@ class Board:
             raise Exception("you cant undo at the beginning of the game")
 
         last_move = self.__played_move.pop(-1)
-        self.__board[last_move[0]][last_move[1]] = " "
+        self.__board[last_move[1]][last_move[0]] = " "
 
         self.state = self.GAME_STATE.PLAYING
         self.winner = None
