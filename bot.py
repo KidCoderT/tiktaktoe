@@ -59,6 +59,18 @@ Thank you!!
 
 
 def regex_position(argument: str):
+    """Using regex this function finds wheter or
+    not a string contains positions to play on.
+
+    if the string doesnt contain it then the function
+    return None!
+
+    Args:
+        argument (str): the string a user will input
+
+    Returns:
+        tuple|None: the position to play on
+    """
     try:
         position = re.search(r"[123]+,+?\s+[123]", argument).string
         position.replace(" ", "")
@@ -68,11 +80,29 @@ def regex_position(argument: str):
 
 
 def render_board(board: Board):
+    """Simple method to render any board
+    to the discord chat
+
+    Args:
+        board (Board): the board to render
+
+    Returns:
+        str: the text to send that will display the board
+    """
     board_ui = "\n".join(board.get_board(update=lambda row: map(convert_to_emoji, row)))
     return board_ui
 
 
 def check_gameover_and_winner(game_data) -> tuple[bool, str]:
+    """Simple function that checks if the game is over
+    and returns it along with the winner (if there is one)
+
+    Args:
+        game_data (dict): contains the info about the game
+
+    Returns:
+        tuple[bool, str]: bool -> is_gameover, str -> winner
+    """
     is_gameover = game_data["board"].state == Board.GAME_STATE.GAME_OVER
     winner = game_data["board"].winner
     if winner is None:
@@ -82,6 +112,12 @@ def check_gameover_and_winner(game_data) -> tuple[bool, str]:
 
 
 async def make_computer_play(ctx: commands.Context, board: Board):
+    """This function makes the computer play its turn
+
+    Args:
+        ctx (commands.Context): the context that is being used
+        board (Board): the current board to play on
+    """
     message = await ctx.send("Computer Thinking...")
 
     best_move = get_best_move(board)
@@ -95,6 +131,17 @@ async def make_computer_play(ctx: commands.Context, board: Board):
 
 
 async def end_game(ctx: commands.Context, winner: str, user_id: str) -> bool:
+    """This is the function that runs when the game is over
+
+    Args:
+        ctx (commands.Context): the context as of now
+        winner (str): the winner
+        user_id (str): the id of the user who's playing
+
+    Returns:
+        bool: should end the game or not
+    """
+
     def check(msg):
         return msg.author == ctx.author and msg.channel == ctx.channel
 
@@ -143,6 +190,8 @@ async def end_game(ctx: commands.Context, winner: str, user_id: str) -> bool:
 
 @bot.command()
 async def tictactoe(ctx: commands.Context, player_value: Optional[str]):
+    """The actual starting point for the game"""
+
     def is_a_letter(text) -> bool:
         return len(text) == 1
 
@@ -190,6 +239,9 @@ async def tictactoe(ctx: commands.Context, player_value: Optional[str]):
         msg = await bot.wait_for("message", check=check)
         position = regex_position(msg.content)
 
+        if ctx.author.id not in games.keys():
+            return
+
         if position is not None:
             try:
                 games[ctx.author.id]["board"].play(position[0] - 1, position[1] - 1)
@@ -223,6 +275,12 @@ async def tictactoe(ctx: commands.Context, player_value: Optional[str]):
 
 @bot.command()
 async def board(ctx: commands.Context):
+    """Draws the current board for the player when needed"""
+    if ctx.author.id not in games.keys():
+        return await ctx.send(
+            "You have not yet started any game!\n Write **#info** to know how to use this bot"
+        )
+
     await ctx.send(f"{ctx.author.mention} your current board position:")
     await ctx.send(render_board(games[ctx.author.id]["board"]))
     await ctx.send(
@@ -233,6 +291,7 @@ async def board(ctx: commands.Context):
 
 @bot.command(name="quit")
 async def _quit(ctx: commands.Context):
+    """Method to quit a game"""
     if ctx.author.id not in games.keys():
         return await ctx.send(
             "You cant quit a game without even starting it!\n Write **#info** to know how to use this bot"
@@ -246,6 +305,8 @@ async def _quit(ctx: commands.Context):
 
 @bot.command(name="info")
 async def _help(ctx: commands.Context):
+    """Simple function that when called gives
+    the user the instructions to use the bot"""
     await ctx.send(INFO_MSG)
 
 
