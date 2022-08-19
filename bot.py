@@ -15,7 +15,6 @@ from src.utils import PositionAlreadyPlayedOnError
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD = os.getenv("DISCORD_GUILD")
 
 intents = discord.Intents.all()
 bot = commands.Bot(
@@ -34,6 +33,29 @@ emoji = {
 
 convert_to_emoji = lambda text: emoji[text]
 games = {}
+
+INFO_MSG = """
+Hello And Welcome To TicTacToe!
+This is a very simple bot created by KidCoderT
+that allows people to play tictactoe against an unbeatable ai!
+
+To start any game type **#tictactoe** after which you can start playing
+with the computer. The computer itself will then ask for what piece you want to
+play as and then the game will begin.
+
+when the computer asks you to play type the message **[x], [y]** and off course
+you need to fill in the x and y to your choice of position,
+for the x 1 is leftmost and 3 is the rightmost position
+and for y 1 is the topmost and 3 is the bottommost position.
+Note the space between the comma and y is important will fix that later!
+
+If ever you want to relook at the board  type **#board** and the bot will
+show you the arrangement of the board and the piece you are playing as.
+
+And finally to quit any game just type **#quit**
+
+Thank you!!
+"""
 
 
 def regex_position(argument: str):
@@ -67,6 +89,9 @@ async def make_computer_play(ctx: commands.Context, board: Board):
 
     await message.edit(content="Computer Thinking... Done!")
     await ctx.send(render_board(board))
+    await ctx.send(
+        f"{ctx.author.mention} the computer played {(best_move[0] + 1, best_move[1] + 1)}!"
+    )
 
 
 async def end_game(ctx: commands.Context, winner: str, user_id: str) -> bool:
@@ -80,17 +105,17 @@ async def end_game(ctx: commands.Context, winner: str, user_id: str) -> bool:
         await ctx.send("The Computer Won!")
         await ctx.send("Good Luck Next Time!")
     else:
-        await ctx.send("You Won!")
+        await ctx.send(f"{ctx.author.mention} Won!")
         await ctx.send("Great Going!")
 
-    await ctx.send("Are you going to play again? Y or N")
+    await ctx.send(f"{ctx.author.mention}, are you going to play again? Y or N")
     msg = await bot.wait_for("message", check=check)
 
     if msg.content.lower() in ("yes", "y", "true", "t", "1", "enable", "on"):
         computer = None
 
         while computer is None:
-            await ctx.send("Are you X or O?")
+            await ctx.send(f"{ctx.author.mention}, are you X or O?")
             msg = await bot.wait_for("message", check=check)
 
             if msg.content.lower() == "x":
@@ -109,7 +134,7 @@ async def end_game(ctx: commands.Context, winner: str, user_id: str) -> bool:
         return False
 
     elif msg.content.lower() in ("no", "n", "false", "f", "0", "disable", "off"):
-        await ctx.send("Thx for playing!")
+        await ctx.send(f"{ctx.author.mention} Thx for playing!")
         await ctx.send("Bye!")
 
         games.pop(user_id)
@@ -117,7 +142,7 @@ async def end_game(ctx: commands.Context, winner: str, user_id: str) -> bool:
 
 
 @bot.command()
-async def tiktaktoe(ctx: commands.Context, player_value: Optional[str]):
+async def tictactoe(ctx: commands.Context, player_value: Optional[str]):
     def is_a_letter(text) -> bool:
         return len(text) == 1
 
@@ -131,7 +156,7 @@ async def tiktaktoe(ctx: commands.Context, player_value: Optional[str]):
 
     game_data = {"board": Board(), "computer": None}
 
-    await ctx.send(f"{ctx.author} Started a new game with AI!")
+    await ctx.send(f"{ctx.author.mention} Started a new game with AI!")
     await ctx.send("started game!!")
     await ctx.send(render_board(game_data["board"]))
 
@@ -141,7 +166,7 @@ async def tiktaktoe(ctx: commands.Context, player_value: Optional[str]):
 
     else:
         while game_data["computer"] is None:
-            await ctx.send("Are you X or O?")
+            await ctx.send(f"{ctx.author.mention} Are you X or O?")
             msg = await bot.wait_for("message", check=check)
 
             if msg.content.lower() not in ["x", "o"]:
@@ -158,7 +183,7 @@ async def tiktaktoe(ctx: commands.Context, player_value: Optional[str]):
     if game_data["computer"] == "x":
         await make_computer_play(ctx, game_data["board"])
 
-    await ctx.send("Your Turn!")
+    await ctx.send(f"{ctx.author.mention} Your Turn!")
     games[ctx.author.id] = game_data
 
     while game_data["board"].state == Board.GAME_STATE.PLAYING:
@@ -173,8 +198,10 @@ async def tiktaktoe(ctx: commands.Context, player_value: Optional[str]):
                     "Select another location as that position has already been played on!"
                 )
             else:
-                await ctx.send(f"You played {position[0]}, {position[1]}!")
-
+                await ctx.send(
+                    f"{ctx.author.mention} played {position[0]}, {position[1]}!"
+                )
+                await ctx.send("current board position:")
                 await ctx.send(render_board(games[ctx.author.id]["board"]))
 
                 is_gameover, winner = check_gameover_and_winner(games[ctx.author.id])
@@ -194,17 +221,32 @@ async def tiktaktoe(ctx: commands.Context, player_value: Optional[str]):
                         return
 
 
+@bot.command()
+async def board(ctx: commands.Context):
+    await ctx.send(f"{ctx.author.mention} your current board position:")
+    await ctx.send(render_board(games[ctx.author.id]["board"]))
+    await ctx.send(
+        f"You are playing as {('O' if games[ctx.author.id]['computer'] == 'x' else 'X')}"
+    )
+    await ctx.send(f"Good Luck!")
+
+
 @bot.command(name="quit")
 async def _quit(ctx: commands.Context):
     if ctx.author.id not in games.keys():
         return await ctx.send(
-            "You cant quit a game without even starting it!\n Write **#help** to know how to use this bot"
+            "You cant quit a game without even starting it!\n Write **#info** to know how to use this bot"
         )
 
     await ctx.send("Thx for playing!")
     await ctx.send("Bye!")
 
     games.pop(ctx.author.id)
+
+
+@bot.command(name="info")
+async def _help(ctx: commands.Context):
+    await ctx.send(INFO_MSG)
 
 
 bot.run(TOKEN, reconnect=True)
