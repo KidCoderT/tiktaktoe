@@ -8,6 +8,7 @@ import discord
 import discord.utils
 from discord.ext import commands
 from dotenv import load_dotenv
+from multiprocessing import Process, Manager
 
 from src.board import Board
 from src.ai import get_best_move
@@ -18,7 +19,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.all()
 bot = commands.Bot(
-    command_prefix="#",
+    command_prefix="t#",
     description="Tik Tak Toe Bot",
     case_insensitive=True,
     intents=intents,
@@ -39,7 +40,7 @@ Hello And Welcome To TicTacToe!
 This is a very simple bot created by KidCoderT
 that allows people to play tictactoe against an unbeatable ai!
 
-To start any game type **#tictactoe** after which you can start playing
+To start any game type **t#tictactoe** after which you can start playing
 with the computer. The computer itself will then ask for what piece you want to
 play as and then the game will begin.
 
@@ -49,10 +50,10 @@ for the x 1 is leftmost and 3 is the rightmost position
 and for y 1 is the topmost and 3 is the bottommost position.
 Note the space between the comma and y is important will fix that later!
 
-If ever you want to relook at the board  type **#board** and the bot will
+If ever you want to relook at the board  type **t#board** and the bot will
 show you the arrangement of the board and the piece you are playing as.
 
-And finally to quit any game just type **#quit**
+And finally to quit any game just type **t#quit**
 
 Thank you!!
 """
@@ -93,7 +94,7 @@ def render_board(board: Board):
     return board_ui
 
 
-def check_gameover_and_winner(game_data) -> tuple[bool, str]:
+def check_gameover_and_winner(game_data):
     """Simple function that checks if the game is over
     and returns it along with the winner (if there is one)
 
@@ -111,6 +112,18 @@ def check_gameover_and_winner(game_data) -> tuple[bool, str]:
     return (is_gameover, winner)
 
 
+def play_best_move(board, move):
+    """Gets the best move
+
+    Args:
+        board (Board): The Board
+        move (Manager.dict): the best_move dict
+    """
+    best_move = get_best_move(board)
+    move["x"] = best_move[0]
+    move["y"] = best_move[1]
+
+
 async def make_computer_play(ctx: commands.Context, board: Board):
     """This function makes the computer play its turn
 
@@ -118,15 +131,22 @@ async def make_computer_play(ctx: commands.Context, board: Board):
         ctx (commands.Context): the context that is being used
         board (Board): the current board to play on
     """
+
     message = await ctx.send("Computer Thinking...")
 
-    best_move = get_best_move(board)
-    board.play(*best_move)
+    with Manager() as manager:
+        best_move = manager.dict({"x": -1, "y": -1})
+
+        process = Process(target=play_best_move, args=[board, best_move])
+        process.start()
+        process.join()
+
+        board.play(best_move["x"], best_move["y"])
 
     await message.edit(content="Computer Thinking... Done!")
     await ctx.send(render_board(board))
     await ctx.send(
-        f"{ctx.author.mention} the computer played {(best_move[0] + 1, best_move[1] + 1)}!"
+        f"{ctx.author.mention} the computer played {map(lambda x: x + 1, board.last_move)}!"
     )
 
 
@@ -200,7 +220,7 @@ async def tictactoe(ctx: commands.Context, player_value: Optional[str]):
 
     if ctx.author.id in games.keys():
         return await ctx.reply(
-            "You're already in a game!!\ntype **#board** to see the current state of the game or **#reset** to reset the game!"
+            "You're already in a game!!\ntype **t#board** to see the current state of the game!"
         )
 
     game_data = {"board": Board(), "computer": None}
@@ -278,7 +298,7 @@ async def board(ctx: commands.Context):
     """Draws the current board for the player when needed"""
     if ctx.author.id not in games.keys():
         return await ctx.send(
-            "You have not yet started any game!\n Write **#info** to know how to use this bot"
+            "You have not yet started any game!\n Write **t#info** to know how to use this bot"
         )
 
     await ctx.send(f"{ctx.author.mention} your current board position:")
@@ -294,7 +314,7 @@ async def _quit(ctx: commands.Context):
     """Method to quit a game"""
     if ctx.author.id not in games.keys():
         return await ctx.send(
-            "You cant quit a game without even starting it!\n Write **#info** to know how to use this bot"
+            "You cant quit a game without even starting it!\n Write **t#info** to know how to use this bot"
         )
 
     await ctx.send("Thx for playing!")
@@ -310,4 +330,5 @@ async def _help(ctx: commands.Context):
     await ctx.send(INFO_MSG)
 
 
-bot.run(TOKEN, reconnect=True)
+if __name__ == "__main__":
+    bot.run(TOKEN, reconnect=True)
