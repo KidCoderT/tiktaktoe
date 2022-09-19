@@ -19,6 +19,7 @@ class Board:
         self.__board = [[" " for _ in range(3)] for _ in range(3)]
         self.__played_move = []
         self.turn = "x"
+        self.depth = 0
 
         self.state = self.GAME_STATE.PLAYING
         self.winner = None
@@ -62,6 +63,7 @@ class Board:
             self.__played_move.append((file, rank))
             self.check_state()
             self.turn = "o" if self.turn == "x" else "x"
+            self.depth += 1
         except IndexError as error:
             raise InvalidPositionError((file, rank)) from error
 
@@ -72,6 +74,7 @@ class Board:
 
         last_move = self.__played_move.pop(-1)
         self.__board[last_move[1]][last_move[0]] = " "
+        self.depth -= 1
 
         self.state = self.GAME_STATE.PLAYING
         self.winner = None

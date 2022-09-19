@@ -146,7 +146,7 @@ async def make_computer_play(ctx: commands.Context, board: Board):
     await message.edit(content="Computer Thinking... Done!")
     await ctx.send(render_board(board))
     await ctx.send(
-        f"{ctx.author.mention} the computer played {map(lambda x: x + 1, board.last_move)}!"
+        f"{ctx.author.mention} the computer played {tuple(map(lambda x: x + 1, board.last_move))}!"
     )
 
 

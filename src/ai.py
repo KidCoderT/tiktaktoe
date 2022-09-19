@@ -1,9 +1,10 @@
 """This module contains functions that help run the ai of tik tak toe"""
 
+from math import inf
 from .board import Board
 
 
-def evaluate_board(board: Board, depth: int) -> int:
+def evaluate_board(board: Board) -> int:
     """Evaluate the state of the board. THe larger the evaluation
     the better the position
 
@@ -19,45 +20,56 @@ def evaluate_board(board: Board, depth: int) -> int:
     board.check_state()
 
     if board.winner == "x":
-        return 20 - depth
+        return 20 - board.depth
     elif board.winner == "o":
-        return -20 + depth
+        return -20 + board.depth
     else:
         return 0
 
 
-def minimax(board: Board, depth: int, is_maximizing_player: bool) -> int:
+def minimax(board: Board, alpha, beta, is_maximizing_player: bool) -> float:
     """This is the minimax function that recursively plays
     and evaluates board posiitons to find the best position.
     it then return te score for the best position.
 
     Args:
         board (Board): the board to be minimized
-        depth (int): the current depth of the function
-        is_maximizing_player (bool): checks wheter to minimize or maximize the player
+        is_maximizing_player (bool): checks whether to minimize or maximize the player
 
     Returns:
         int: the final score for the position
     """
-    score = evaluate_board(board, depth)
+    score = evaluate_board(board)
 
     if board.winner is not None or board.state == Board.GAME_STATE.GAME_OVER:
         return score
 
     if is_maximizing_player:
-        best_val = -10000
+        best_val = -inf
         for move in board.available_positions():
             board.play(*move)
-            best_val = max(best_val, minimax(board, depth + 1, False))
+            evaluation = minimax(board, alpha, beta, False)
+            best_val = max(best_val, evaluation)
+            alpha= max(alpha, evaluation)
+
             board.undo()
+
+            if beta <= alpha:
+                return score
         return best_val
 
     else:
-        best_val = 100000
+        best_val = inf
         for move in board.available_positions():
             board.play(*move)
-            best_val = min(best_val, minimax(board, depth + 1, True))
+            evaluation = minimax(board, alpha, beta, True)
+            best_val = min(best_val, evaluation)
+            beta= min(beta, evaluation)
+
             board.undo()
+
+            if beta <= alpha:
+                return score
         return best_val
 
 
@@ -76,7 +88,7 @@ def get_best_move(board: Board) -> tuple:
 
     for move in board.available_positions():
         board.play(*move)
-        value = minimax(board, 0, board.turn == "x") * sign
+        value = minimax(board, -inf, inf, board.turn == "x") * sign
         is_best_val = value >= best_val
 
         if is_best_val:
