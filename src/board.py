@@ -6,14 +6,15 @@ from enum import Enum
 from src.utils import *
 
 
+class GAME_STATE(Enum):
+    """The Game State of the Board"""
+
+    PLAYING = 1
+    GAME_OVER = 0
+
+
 class Board:
     """This is the game board for tic tak toe"""
-
-    class GAME_STATE(Enum):
-        """The Game State of the Board"""
-
-        PLAYING = 1
-        GAME_OVER = 0
 
     def __init__(self):
         self.__board = [[" " for _ in range(3)] for _ in range(3)]
@@ -21,7 +22,7 @@ class Board:
         self.turn = "x"
         self.depth = 0
 
-        self.state = self.GAME_STATE.PLAYING
+        self.state = GAME_STATE.PLAYING
         self.winner = None
 
     def get_position(self, file: int, rank: int):
@@ -53,7 +54,7 @@ class Board:
         Raises:
             InvalidPositionError: It is raised when the position is invalid
         """
-        if self.state == self.GAME_STATE.GAME_OVER:
+        if self.state == GAME_STATE.GAME_OVER:
             raise PlayingAfterGameOverError()
 
         if self.__board[rank][file] != " ":
@@ -76,7 +77,7 @@ class Board:
         self.__board[last_move[1]][last_move[0]] = " "
         self.depth -= 1
 
-        self.state = self.GAME_STATE.PLAYING
+        self.state = GAME_STATE.PLAYING
         self.winner = None
         self.check_state()
 
@@ -113,7 +114,7 @@ class Board:
             )
             if winner_present:
                 self.winner = self.__board[0][columns]
-                self.state = self.GAME_STATE.GAME_OVER
+                self.state = GAME_STATE.GAME_OVER
                 return
 
         # check the columns
@@ -126,7 +127,7 @@ class Board:
             )
             if winner_present:
                 self.winner = self.__board[columns][0]
-                self.state = self.GAME_STATE.GAME_OVER
+                self.state = GAME_STATE.GAME_OVER
                 return
 
         # check diagonals
@@ -135,7 +136,7 @@ class Board:
         )
         if winner_present:
             self.winner = self.__board[1][1]
-            self.state = self.GAME_STATE.GAME_OVER
+            self.state = GAME_STATE.GAME_OVER
             return
 
         winner_present = (
@@ -143,11 +144,11 @@ class Board:
         )
         if winner_present:
             self.winner = self.__board[1][1]
-            self.state = self.GAME_STATE.GAME_OVER
+            self.state = GAME_STATE.GAME_OVER
             return
 
         if len(self.available_positions()) == 0:
-            self.state = self.GAME_STATE.GAME_OVER
+            self.state = GAME_STATE.GAME_OVER
 
     def reset_board(self):
         """Resets the board to its initial state"""
@@ -155,12 +156,10 @@ class Board:
         self.__played_move = []
         self.turn = "x"
 
-        self.state = self.GAME_STATE.PLAYING
+        self.state = GAME_STATE.PLAYING
         self.winner = None
 
-    def get_board(self, update):
-        """Gets the board represented in the form of an array where each element
-        shows a row on the board
-        """
+    def get_board(self):
+        """Return the board"""
 
-        return ["|".join(update(row)) for row in self.__board]
+        return self.__board

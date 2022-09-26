@@ -1,21 +1,25 @@
-# pyright: reportGeneralTypeIssues=false
+# pyright: reportGeneralTypeIssues=false, reportOptionalMemberAccess=false, unnecessary-lambda-assignment=false
+"""This is my TicTacToe Discord Bot
+Implementation. THis mainly takes care of the discord
+connection and messaging
+"""
 
 import os
-import re
+import asyncio
+from copy import copy
 from typing import Optional
 
 import discord
-import discord.utils
 from discord.ext import commands
 from dotenv import load_dotenv
-from multiprocessing import Process, Manager
 
-from src.board import Board
+from src.board import Board, GAME_STATE
 from src.ai import get_best_move
-from src.utils import PositionAlreadyPlayedOnError
+from src.utils import PlayingAfterGameOverError, PositionAlreadyPlayedOnError
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
+BOT_ID = int(os.getenv("APPLICATION_ID"))  # type: ignore
 
 intents = discord.Intents.all()
 bot = commands.Bot(
@@ -23,17 +27,19 @@ bot = commands.Bot(
     description="Tik Tak Toe Bot",
     case_insensitive=True,
     intents=intents,
-    owner_ids=[],
+    owner_id=912949047650824282,
 )
 
-emoji = {
+BUTTON_GREY = discord.ButtonStyle.gray
+BUTTON_BLUE = discord.ButtonStyle.blurple
+BUTTON_GREEN = discord.ButtonStyle.green
+BUTTON_RED = discord.ButtonStyle.red
+
+EMOJI_DICT = {
     "x": ":regional_indicator_x:",
     "o": ":regional_indicator_o:",
     " ": ":blue_square:",
 }
-
-convert_to_emoji = lambda text: emoji[text]
-games = {}
 
 INFO_MSG = """
 Hello And Welcome To TicTacToe!
@@ -41,286 +47,509 @@ This is a very simple bot created by KidCoderT
 that allows people to play tictactoe against an unbeatable ai!
 
 To start any game type **t#tictactoe** after which you can start playing
-with the computer. The computer itself will then ask for what piece you want to
-play as and then the game will begin.
+and the computer will guid u through.
 
-when the computer asks you to play type the message **[x], [y]** and off course
-you need to fill in the x and y to your choice of position,
-for the x 1 is leftmost and 3 is the rightmost position
-and for y 1 is the topmost and 3 is the bottommost position.
-Note the space between the comma and y is important will fix that later!
+If ever u feel u want to quit just type **t#quit** or react with
+the 🚫 sign.
 
-If ever you want to relook at the board  type **t#board** and the bot will
-show you the arrangement of the board and the piece you are playing as.
-
-And finally to quit any game just type **t#quit**
+If u feel the view is lagging react with the 🔃 message!!
 
 Thank you!!
 """
 
 
-def regex_position(argument: str):
-    """Using regex this function finds wheter or
-    not a string contains positions to play on.
-
-    if the string doesnt contain it then the function
-    return None!
-
-    Args:
-        argument (str): the string a user will input
-
-    Returns:
-        tuple|None: the position to play on
+def run_asynchronously(func_, *args, **kwargs):
+    """Makes any function run asynchronously
+    avoiding the RuntimeError that can come
     """
     try:
-        position = re.search(r"[123]+,+?\s+[123]", argument).string
-        position.replace(" ", "")
-        return tuple(map(int, position.split(",")))
-    except AttributeError:
-        return None
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # 'RuntimeError: There is no current event loop...'
+        loop = None
 
-
-def render_board(board: Board):
-    """Simple method to render any board
-    to the discord chat
-
-    Args:
-        board (Board): the board to render
-
-    Returns:
-        str: the text to send that will display the board
-    """
-    board_ui = "\n".join(board.get_board(update=lambda row: map(convert_to_emoji, row)))
-    return board_ui
-
-
-def check_gameover_and_winner(game_data):
-    """Simple function that checks if the game is over
-    and returns it along with the winner (if there is one)
-
-    Args:
-        game_data (dict): contains the info about the game
-
-    Returns:
-        tuple[bool, str]: bool -> is_gameover, str -> winner
-    """
-    is_gameover = game_data["board"].state == Board.GAME_STATE.GAME_OVER
-    winner = game_data["board"].winner
-    if winner is None:
-        winner = "draw"
-
-    return (is_gameover, winner)
-
-
-def play_best_move(board, move):
-    """Gets the best move
-
-    Args:
-        board (Board): The Board
-        move (Manager.dict): the best_move dict
-    """
-    best_move = get_best_move(board)
-    move["x"] = best_move[0]
-    move["y"] = best_move[1]
-
-
-async def make_computer_play(ctx: commands.Context, board: Board):
-    """This function makes the computer play its turn
-
-    Args:
-        ctx (commands.Context): the context that is being used
-        board (Board): the current board to play on
-    """
-
-    message = await ctx.send("Computer Thinking...")
-
-    with Manager() as manager:
-        best_move = manager.dict({"x": -1, "y": -1})
-
-        process = Process(target=play_best_move, args=[board, best_move])
-        process.start()
-        process.join()
-
-        board.play(best_move["x"], best_move["y"])
-
-    await message.edit(content="Computer Thinking... Done!")
-    await ctx.send(render_board(board))
-    await ctx.send(
-        f"{ctx.author.mention} the computer played {tuple(map(lambda x: x + 1, board.last_move))}!"
-    )
-
-
-async def end_game(ctx: commands.Context, winner: str, user_id: str) -> bool:
-    """This is the function that runs when the game is over
-
-    Args:
-        ctx (commands.Context): the context as of now
-        winner (str): the winner
-        user_id (str): the id of the user who's playing
-
-    Returns:
-        bool: should end the game or not
-    """
-
-    def check(msg):
-        return msg.author == ctx.author and msg.channel == ctx.channel
-
-    if winner == "draw":
-        await ctx.send("It was a Draw!")
-        await ctx.send("Nice!")
-    elif winner == games[user_id]["computer"]:
-        await ctx.send("The Computer Won!")
-        await ctx.send("Good Luck Next Time!")
+    if loop and loop.is_running():
+        loop.create_task(func_(*args, **kwargs))
     else:
-        await ctx.send(f"{ctx.author.mention} Won!")
-        await ctx.send("Great Going!")
+        asyncio.run(func_(*args, **kwargs))
 
-    await ctx.send(f"{ctx.author.mention}, are you going to play again? Y or N")
-    msg = await bot.wait_for("message", check=check)
 
-    if msg.content.lower() in ("yes", "y", "true", "t", "1", "enable", "on"):
-        computer = None
+class Game:
+    """The game class contains all the methods
+    and interactions and details for all the game instance
+    """
 
-        while computer is None:
-            await ctx.send(f"{ctx.author.mention}, are you X or O?")
-            msg = await bot.wait_for("message", check=check)
+    def __init__(
+        self,
+        author: discord.Member | discord.User,
+        player: str,
+        is_hard: bool,
+        message: discord.Message,
+        view: discord.ui.View,
+    ):
+        self.message = message
+        self.view = view
 
-            if msg.content.lower() == "x":
-                computer = "o"
-            elif msg.content.lower() == "o":
-                computer = "x"
+        self.author = author
+        self.board = Board()
+        self.player_name = self.author.name
+        self.state = "Your Turn"  # Your Turn | Computer is Thinking
+        self.player = player  # x or o
+        self.is_hard = is_hard
+
+        self.is_computing_next_game = False
+        self.channel = self.message.channel
+
+        self.wins = 0
+        self.loses = 0
+        self.draws = 0
+
+    def reset_values(self):
+        self.is_computing_next_game = False
+        self.board.reset_board()
+
+        for button in self.view.children:
+            button.reset()  # type: ignore
+
+    async def start_computer(self):
+        """Plays the computers move"""
+        self.is_computing_next_game = True
+        self.state = "Computer Thinking..."
+
+        best_move = get_best_move(copy(self.board), self.is_hard)
+
+        if not self.is_hard:
+            await asyncio.sleep(1)
+
+        self.board.play(*best_move)
+
+        index = best_move[0] + best_move[1] * 3
+        self.view.children[index].style = BUTTON_RED  # type: ignore
+        self.view.children[index].disabled = True  # type: ignore
+
+        self.state = "Your Turn"
+        self.is_computing_next_game = False
+        await self.update(game_finished=(self.board.state == GAME_STATE.GAME_OVER))
+
+    async def update_messages(self):
+        """Updates the embed & view to
+        show the current message"""
+        turn = self.board.turn
+        difficulty = "Easy" if not self.is_hard else "Hard"
+
+        if self.board.state == GAME_STATE.GAME_OVER:
+            turn = "NA"
+
+            if self.board.winner is None:
+                self.state = "Its a Draw!!"
+                self.draws += 1
+            elif self.board.winner == self.player:
+                self.state = "You Won!!"
+                self.wins += 1
             else:
-                await ctx.send("Please select either x or o!")
+                self.state = "Computer Won!!"
+                self.loses += 1
 
-        games[user_id]["computer"] = computer
-        games[user_id]["board"].reset_board()
+            for button in self.view.children:
+                button.disabled = True  # type: ignore
 
-        if games[user_id]["computer"] == "x":
-            await make_computer_play(ctx, games[user_id]["board"])
-
-        return False
-
-    elif msg.content.lower() in ("no", "n", "false", "f", "0", "disable", "off"):
-        await ctx.send(f"{ctx.author.mention} Thx for playing!")
-        await ctx.send("Bye!")
-
-        games.pop(user_id)
-        return True
-
-
-@bot.command()
-async def tictactoe(ctx: commands.Context, player_value: Optional[str]):
-    """The actual starting point for the game"""
-
-    def is_a_letter(text) -> bool:
-        return len(text) == 1
-
-    def check(msg):
-        return msg.author == ctx.author and msg.channel == ctx.channel
-
-    if ctx.author.id in games.keys():
-        return await ctx.reply(
-            "You're already in a game!!\ntype **t#board** to see the current state of the game!"
+        description = "\n".join(
+            map(
+                lambda x: f"{x[0]}: {x[1]}",
+                (
+                    ("Player", self.player_name),
+                    ("Current Turn", turn),
+                    ("State", self.state),
+                    ("Difficulty", difficulty),
+                    ("\nWins", self.wins),
+                    ("Loses", self.loses),
+                    ("Draws", self.draws),
+                ),
+            )
         )
 
-    game_data = {"board": Board(), "computer": None}
+        update = lambda row: map(lambda text: EMOJI_DICT[text], row)
+        board_ui = "\n".join(
+            [" | ".join(update(row)) for row in self.board.get_board()]
+        )
+        description = description + "\n\n" + board_ui
 
-    await ctx.send(f"{ctx.author.mention} Started a new game with AI!")
-    await ctx.send("started game!!")
-    await ctx.send(render_board(game_data["board"]))
+        embed = discord.Embed(
+            title=":regional_indicator_x: __**TICTACTOE**__ :regional_indicator_o:",
+            description=description,
+        )
 
-    if player_value is not None:
-        singular_letters = filter(is_a_letter, player_value.split(" "))
-        game_data["computer"] = "o" if "x" in singular_letters else "x"
+        for rank in range(3):
+            for file in range(3):
+                index = file + rank * 3
+                piece = self.board.get_position(file, rank)
 
-    else:
-        while game_data["computer"] is None:
-            await ctx.send(f"{ctx.author.mention} Are you X or O?")
-            msg = await bot.wait_for("message", check=check)
+                if piece != " ":
+                    if piece != self.player:
+                        self.view.children[index].style = BUTTON_RED
+                    else:
+                        self.view.children[index].style = BUTTON_GREEN
 
-            if msg.content.lower() not in ["x", "o"]:
-                await ctx.send("Please select either x or o!")
-                continue
+                    self.view.children[index].disabled = True
 
-            if msg.content.lower() == "x":
-                game_data["computer"] = "o"
-            elif msg.content.lower() == "o":
-                game_data["computer"] = "x"
+                else:
+                    if self.state == GAME_STATE.GAME_OVER:
+                        self.view.children[index].disabled = True
+
+        await self.message.edit(embed=embed, view=self.view)
+
+    async def update(self, move: Optional[tuple] = None, game_finished=False):
+        """Updates the Game in the backend"""
+        if move is not None:
+            if self.is_computing_next_game:
+                await self.channel.send(
+                    f"{self.author.mention} Wait!! The Computer has not\n"
+                    + "yet finished playing his move!!"
+                )
             else:
-                await ctx.send("Please select either x or o!")
+                try:
+                    self.board.play(*move)
 
-    if game_data["computer"] == "x":
-        await make_computer_play(ctx, game_data["board"])
+                    index = move[0] + move[1] * 3
+                    self.view.children[index].style = BUTTON_GREEN  # type: ignore
+                    self.view.children[index].disabled = True  # type: ignore
 
-    await ctx.send(f"{ctx.author.mention} Your Turn!")
-    games[ctx.author.id] = game_data
+                    game_finished = self.board.state == GAME_STATE.GAME_OVER
+                except PlayingAfterGameOverError:
+                    pass
+                except PositionAlreadyPlayedOnError:
+                    pass
 
-    while game_data["board"].state == Board.GAME_STATE.PLAYING:
-        msg = await bot.wait_for("message", check=check)
-        position = regex_position(msg.content)
+        if self.board.state != GAME_STATE.GAME_OVER:
+            if self.board.turn != self.player:
+                self.state = "Computer Thinking..."
+                run_asynchronously(self.start_computer)
 
-        if ctx.author.id not in games.keys():
+            if self.board.turn == self.player:
+                self.state = "Your Turn"
+
+        await self.update_messages()
+
+        if game_finished:
+            should_continue = (
+                await get_input(
+                    self.channel,
+                    "Want to play again??",
+                    [("Yes", BUTTON_GREEN, "yes"), ("No", BUTTON_RED, "no")],
+                    self.author.id,
+                )
+                == "yes"
+            )
+
+            if should_continue:
+                self.reset_values()
+                self.player = await get_input(
+                    self.channel,
+                    "Choose who u are!!",
+                    [("X", BUTTON_BLUE, "x"), ("O", BUTTON_GREEN, "o")],
+                    self.author.id,
+                )
+
+                await self.update()
+                return
+
+            await end_game(self.author.id)
+
+    async def quit(self):
+        """Quit the game"""
+        description = ":red_circle::red_circle: FINISHED :red_circle::red_circle:\n\n"
+
+        difficulty = "Easy" if not self.is_hard else "Hard"
+        description = description + "\n".join(
+            map(
+                lambda x: f"{x[0]}: {x[1]}",
+                (
+                    ("Player", self.player_name),
+                    ("Difficulty", difficulty),
+                    ("Wins", self.wins),
+                    ("Loses", self.loses),
+                    ("Draws", self.draws),
+                ),
+            )
+        )
+
+        embed = discord.Embed(
+            title=":regional_indicator_x: __**TICTACTOE**__ :regional_indicator_o:",
+            description=description,
+        )
+
+        await self.message.edit(embed=embed, view=None)
+
+
+games: dict[int, Game] = {}
+
+
+async def end_game(user_id: int):
+    """Ends a game based on the player's ID'
+    Args: id (int): the id of the player playing the game
+    """
+    await games[user_id].channel.send(
+        f"{bot.get_user(user_id).mention} Thx for Playing!!"
+    )
+    await games[user_id].quit()
+    del games[user_id]
+
+
+async def get_input(ctx, question, buttons, user_id=None) -> str:
+    """This function allows for getting user input
+    based on button interactions from the user.
+
+    Args:
+        ctx (_type_): the channel to send the question to
+        question (_type_): the question to be displayed
+        buttons (_type_): the buttons data
+        id (_type_, optional): the id if its not accessible through ctx. Defaults to None.
+
+    Returns:
+        str: the custom_id of the selected button
+    """
+    if user_id is None:
+        user_id = ctx.author.id
+
+    view = discord.ui.View()
+
+    async def callback(interaction: discord.Interaction):
+        await message.delete()
+
+    for (label, style, value) in buttons:
+        button = discord.ui.Button(
+            label=label, style=style, custom_id=f"{user_id} {value}"
+        )
+        button.callback = callback
+
+        view.add_item(button)
+
+    message = await ctx.send(f"{bot.get_user(user_id).mention} {question}", view=view)
+
+    def check(interaction: discord.Interaction):
+        return (
+            interaction.data["component_type"] == 2  # type: ignore
+            and "custom_id" in interaction.data.keys()
+        )
+
+    res: discord.Interaction = await bot.wait_for(
+        "interaction",
+        check=check,
+    )
+
+    return res.data["custom_id"].split()[-1]  # type: ignore
+
+
+class PositionalButton(discord.ui.Button):
+    """My Custom Discord Button"""
+
+    def __init__(self, user_id: int, file, rank):
+        super().__init__(label=" - ", style=BUTTON_GREY, row=rank)
+        self.user_id = user_id
+        self.file, self.rank = file, rank
+
+    async def callback(self, interaction):
+
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                f"{interaction.user.mention} This is someone elses game u cant interfere!!"
+            )
             return
 
-        if position is not None:
-            try:
-                games[ctx.author.id]["board"].play(position[0] - 1, position[1] - 1)
-            except PositionAlreadyPlayedOnError:
-                await ctx.send(
-                    "Select another location as that position has already been played on!"
-                )
-            else:
-                await ctx.send(
-                    f"{ctx.author.mention} played {position[0]}, {position[1]}!"
-                )
-                await ctx.send("current board position:")
-                await ctx.send(render_board(games[ctx.author.id]["board"]))
+        game = games[self.user_id]
+        if self.style == BUTTON_GREY:
+            await interaction.response.defer()
+            await game.update((self.file, self.rank))
 
-                is_gameover, winner = check_gameover_and_winner(games[ctx.author.id])
+        else:
+            await interaction.response.send_message(
+                f"{bot.get_user(self.user_id).mention} The position has already been played on!!"
+            )
 
-                if is_gameover:
-                    should_end = await end_game(ctx, winner, ctx.author.id)
-                    if should_end:
-                        return
+    def reset(self):
+        """resets the button
+        to original state
+        and color!!
+        """
+        self.disabled = False
+        self.style = BUTTON_GREY
 
-                await make_computer_play(ctx, games[ctx.author.id]["board"])
 
-                is_gameover, winner = check_gameover_and_winner(games[ctx.author.id])
-
-                if is_gameover:
-                    should_end = await end_game(ctx, winner, ctx.author.id)
-                    if should_end:
-                        return
+# tictactoe
+# - starts a new game
+# - create the buttons & embed
+# - create the game representation
+# - adds the game to the list of games
 
 
 @bot.command()
-async def board(ctx: commands.Context):
-    """Draws the current board for the player when needed"""
-    if ctx.author.id not in games.keys():
-        return await ctx.send(
-            "You have not yet started any game!\n Write **t#info** to know how to use this bot"
+async def tictactoe(ctx: commands.Context):
+    """Starts a new Game With the Bot
+
+    Args:
+        ctx (commands.Context): the channel
+    """
+    author = ctx.author.id
+
+    if author not in games:
+
+        player = await get_input(
+            ctx,
+            "Choose who u are!!",
+            [("X", BUTTON_BLUE, "x"), ("O", BUTTON_GREEN, "o")],
+            author,
+        )
+        is_hard = (
+            await get_input(
+                ctx,
+                "Choose your difficulty level!!",
+                [("Easy", BUTTON_GREEN, "easy"), ("Hard", BUTTON_RED, "hard")],
+            )
+            == "hard"
         )
 
-    await ctx.send(f"{ctx.author.mention} your current board position:")
-    await ctx.send(render_board(games[ctx.author.id]["board"]))
-    await ctx.send(
-        f"You are playing as {('O' if games[ctx.author.id]['computer'] == 'x' else 'X')}"
-    )
-    await ctx.send(f"Good Luck!")
+        description = "loading...."
+        embed = discord.Embed(
+            title=":regional_indicator_x: __**TICTACTOE**__ :regional_indicator_o:",
+            description=description,
+        )
+
+        view = discord.ui.View(timeout=None)
+
+        for rank in range(3):
+            for file in range(3):
+                btn = PositionalButton(author, file, rank)
+                view.add_item(btn)
+
+        message = await ctx.send(embed=embed, view=view)
+        await message.add_reaction("🚫")
+        await message.add_reaction("🔃")
+
+        new_game = Game(
+            ctx.author,
+            player,
+            is_hard,
+            message,
+            view,
+        )
+        games[author] = new_game
+
+        await games[author].update()
+
+    else:
+        await ctx.send(f"{ctx.author.mention} u are already in a game!!")
+        await ctx.send("either quit and restart or continue")
+
+
+# quit
+# - quits the game the player is playing
+# - if player not playing game just say problem
 
 
 @bot.command(name="quit")
-async def _quit(ctx: commands.Context):
-    """Method to quit a game"""
-    if ctx.author.id not in games.keys():
-        return await ctx.send(
-            "You cant quit a game without even starting it!\n Write **t#info** to know how to use this bot"
-        )
+async def quit_game(ctx: commands.Context):
+    """Quits any and all existing games
 
-    await ctx.send("Thx for playing!")
-    await ctx.send("Bye!")
+    Args:
+        ctx (commands.Context): _description_
+    """
+    author = ctx.author.id
 
-    games.pop(ctx.author.id)
+    if author not in games:
+        await ctx.send(f"{ctx.author.mention} u are not playing any game!!")
+        await ctx.send("start a new game by typing **t#tictactoe**")
+
+    else:
+        await end_game(ctx.author.id)
+
+
+# clear_all <n>
+# - deletes all the bot messages in the last n messages
+# - only possible if bot maker or server owner
+
+
+@bot.command()
+async def clear_all(ctx: commands.Context, length):
+    """Clear All the Messages made by the Bot.
+
+    Args:
+        ctx (commands.Context): the COntext
+        length (str): the number of messages to clear
+    """
+
+    def is_bot_message(message: discord.Message):
+        try:
+            return message.author.id == BOT_ID or message.content.split("#")[0] == "t"
+        except IndexError:
+            return False
+
+    if ctx.author == ctx.guild.owner or ctx.author.id == bot.owner_id:
+        try:
+            await ctx.channel.purge(limit=int(length), check=is_bot_message)  # type: ignore
+            await ctx.send(f"{ctx.author.mention} Deleted all previous Messages!!")
+
+            games.clear()
+        except ValueError:
+            await ctx.send(f"{ctx.author.mention} length needs to be a number!!")
+
+        return
+
+    await ctx.send(
+        f"{ctx.author.mention} You dont have the permission to delete the messages!!"
+    )
+
+
+@bot.event
+async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
+    """This is the method called when the user
+    or bot made a reaction to any message
+
+    Args:
+        reaction (discord.Reaction): the reaction made
+        user (discord.User): the user that made it
+    """
+    emoji = reaction.emoji
+
+    if user.bot:
+        return
+
+    if emoji == "🚫":
+        try:
+            await end_game(user.id)
+        except KeyError:
+            pass
+
+    if emoji == "🔃":
+        try:
+            game = games[user.id]
+            await game.update_messages()
+        except KeyError:
+            pass
+
+
+@bot.event
+async def on_reaction_remove(reaction: discord.Reaction, user: discord.User):
+    """This is the method called when the user
+    or bot removed a reaction to any message
+
+    Args:
+        reaction (discord.Reaction): the reaction made
+        user (discord.User): the user that made it
+    """
+    emoji = reaction.emoji
+
+    if user.bot:
+        return
+
+    if emoji == "🔃":
+        try:
+            game = games[user.id]
+            await game.update_messages()
+        except KeyError:
+            pass
+
+
+# help
+# - gives the instructions to use bot
 
 
 @bot.command(name="info")
@@ -331,4 +560,4 @@ async def _help(ctx: commands.Context):
 
 
 if __name__ == "__main__":
-    bot.run(TOKEN, reconnect=True)
+    bot.run(TOKEN, reconnect=True)  # type: ignore
